@@ -346,9 +346,10 @@ export class ActionService implements Disposable {
   }
 
   private applyActions(actions: readonly ActionDefinition[]): void {
-    this.activeActions = actions;
-    this.tree.setActions(actions);
-    void setContextKey(CONTEXT_HAS_ACTIONS, actions.length > 0);
+    const deduped = Array.from(new Map(actions.map(action => [action.id, action])).values());
+    this.activeActions = deduped;
+    this.tree.setActions(deduped);
+    void setContextKey(CONTEXT_HAS_ACTIONS, deduped.length > 0);
   }
 
   private async transformEnvVariables(

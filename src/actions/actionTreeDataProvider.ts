@@ -73,13 +73,13 @@ export class ActionTreeDataProvider implements TreeDataProvider<ActionTreeNode> 
       return [];
     }
 
-    const grouped = new Map<string, ActionDefinition[]>();
+    const grouped = new Map<string, Map<string, ActionDefinition>>();
 
     for (const action of this.actions) {
       const tags = action.tags.length > 0 ? action.tags : [GENERAL_GROUP];
       for (const tag of tags) {
-        const bucket = grouped.get(tag) ?? [];
-        bucket.push(action);
+        const bucket = grouped.get(tag) ?? new Map<string, ActionDefinition>();
+        bucket.set(action.id, action);
         grouped.set(tag, bucket);
       }
     }
@@ -89,7 +89,7 @@ export class ActionTreeDataProvider implements TreeDataProvider<ActionTreeNode> 
       .map<ActionTreeNode>(([tag, items]) => ({
         type: "group",
         label: tag,
-        actions: items.sort((left, right) => left.name.localeCompare(right.name)),
+        actions: Array.from(items.values()).sort((left, right) => left.name.localeCompare(right.name)),
       }));
 
     return sortedGroups;

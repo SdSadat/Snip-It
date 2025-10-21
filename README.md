@@ -44,11 +44,6 @@ Snip It is a VS Code extension that lets you capture repeatable snippets of work
 - Optionally set **Pass output as** to name the parameter receiving the previous action’s stdout (trailing newlines are trimmed automatically).
 - Chains halt if any action returns a non-zero exit code or throws an error.
 
-### Sample Actions
-
-- Import `docs/sample-actions.json` via **Snip It → … → Import Actions** to load four ready-made demos (Bash, Node, PowerShell, Python).
-- The Bash action feeds a greeting into the Node action to showcase chaining; the PowerShell and Python samples exercise clipboard/predefined variables and external tooling respectively.
-
 ### Secrets & Environment Variables
 
 - Mark environment entries as **Secret**; first-time values are persisted to VS Code’s SecretStorage.
