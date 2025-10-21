@@ -1,0 +1,212 @@
+{
+  "name": "snip-it",
+  "displayName": "Snip It",
+  "description": "Create, manage, and run reusable actions inside VS Code",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.105.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "snipIt",
+          "title": "Snip It",
+          "icon": "resources/activity-bar.svg"
+        }
+      ]
+    },
+    "views": {
+      "snipIt": [
+        {
+          "id": "snipIt.actions",
+          "name": "Actions"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "snip-it.newAction",
+        "title": "Snip It: New Action",
+        "icon": "$(add)"
+      },
+      {
+        "command": "snip-it.editAction",
+        "title": "Snip It: Edit Action",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "snip-it.runAction",
+        "title": "Snip It: Run Action",
+        "icon": "$(play)"
+      },
+      {
+        "command": "snip-it.deleteAction",
+        "title": "Snip It: Delete Action",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "snip-it.showActionPicker",
+        "title": "Snip It: Run Action...",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "snip-it.importActions",
+        "title": "Snip It: Import Actions",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "snip-it.exportActions",
+        "title": "Snip It: Export Actions",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "snip-it.refreshActions",
+        "title": "Snip It: Refresh Actions",
+        "icon": "$(refresh)"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "snip-it.editorSubmenu",
+        "label": "Snip It"
+      },
+      {
+        "id": "snip-it.explorerSubmenu",
+        "label": "Snip It"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "snip-it.newAction"
+        },
+        {
+          "command": "snip-it.showActionPicker"
+        },
+        {
+          "command": "snip-it.importActions"
+        },
+        {
+          "command": "snip-it.exportActions"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "snip-it.newAction",
+          "when": "view == snipIt.actions",
+          "group": "navigation@0"
+        },
+        {
+          "command": "snip-it.importActions",
+          "when": "view == snipIt.actions",
+          "group": "navigation@1"
+        },
+        {
+          "command": "snip-it.exportActions",
+          "when": "view == snipIt.actions",
+          "group": "navigation@2"
+        },
+        {
+          "command": "snip-it.refreshActions",
+          "when": "view == snipIt.actions",
+          "group": "navigation@9"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "snip-it.runAction",
+          "when": "view == snipIt.actions && viewItem == snipIt.action",
+          "group": "inline@0"
+        },
+        {
+          "command": "snip-it.editAction",
+          "when": "view == snipIt.actions && viewItem == snipIt.action",
+          "group": "inline@1"
+        },
+        {
+          "command": "snip-it.deleteAction",
+          "when": "view == snipIt.actions && viewItem == snipIt.action",
+          "group": "inline@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "submenu": "snip-it.editorSubmenu",
+          "group": "navigation@99",
+          "when": "snipIt.hasActions"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "submenu": "snip-it.editorSubmenu",
+          "group": "navigation@99",
+          "when": "snipIt.hasActions"
+        }
+      ],
+      "explorer/context": [
+        {
+          "submenu": "snip-it.explorerSubmenu",
+          "group": "navigation@99",
+          "when": "snipIt.hasActions"
+        }
+      ],
+      "snip-it.editorSubmenu": [
+        {
+          "command": "snip-it.showActionPicker",
+          "group": "1_run"
+        },
+        {
+          "command": "snip-it.newAction",
+          "group": "9_manage"
+        }
+      ],
+      "snip-it.explorerSubmenu": [
+        {
+          "command": "snip-it.showActionPicker",
+          "group": "1_run"
+        },
+        {
+          "command": "snip-it.newAction",
+          "group": "9_manage"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run build:webview && npm run check-types && npm run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "npm run build:webview && npm run check-types && npm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vscode-test",
+    "build:webview": "npm --prefix webview install --no-audit --no-fund && npm --prefix webview run build",
+    "lint:webview": "npm --prefix webview run lint"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.105.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@typescript-eslint/eslint-plugin": "^8.45.0",
+    "@typescript-eslint/parser": "^8.45.0",
+    "eslint": "^9.36.0",
+    "esbuild": "^0.25.10",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.9.3",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2"
+  }
+}

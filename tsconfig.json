@@ -1,0 +1,18 @@
+{
+	"compilerOptions": {
+		"module": "commonjs",
+		"target": "ES2022",
+		"lib": [
+			"ES2022"
+		],
+		"moduleResolution": "node",
+		"esModuleInterop": true,
+		"resolveJsonModule": true,
+		"types": ["node", "mocha"],
+		"sourceMap": true,
+		"rootDir": "src",
+		"strict": true,
+	},
+	"include": ["src/**/*.ts"],
+	"exclude": ["webview"]
+}

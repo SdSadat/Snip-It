@@ -1,0 +1,32 @@
+{
+  "name": "snip-it-webview",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && node ./scripts/postbuild.mjs",
+    "preview": "vite preview",
+    "lint": "eslint \"src/**/*.{ts,tsx}\""
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.6.3",
+    "@vscode/webview-ui-toolkit": "^1.3.0",
+    "monaco-editor": "^0.49.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "snip-it": "file:.."
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.3",
+    "@typescript-eslint/eslint-plugin": "^8.8.1",
+    "@typescript-eslint/parser": "^8.8.1",
+    "@vitejs/plugin-react": "^4.2.1",
+    "eslint": "^9.7.0",
+    "eslint-plugin-react-hooks": "^5.1.0-rc.0",
+    "eslint-plugin-react-refresh": "^0.4.8",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.2"
+  }
+}
