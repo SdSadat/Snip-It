@@ -65,11 +65,23 @@ export class ActionEditorProvider {
 
     return await new Promise<ActionEditorDraft | undefined>(resolve => {
       const disposables: Disposable[] = [];
-      const sendInit = async () => {
-        await this.postMessage(panel.webview, { type: "init", payload: initPayload });
+      let settled = false;
+      let disposed = false;
+
+      const finalize = (result?: ActionEditorDraft) => {
+        if (!settled) {
+          settled = true;
+          resolve(result);
+        }
       };
 
-      const cleanup = (result?: ActionEditorDraft) => {
+      const cleanup = () => {
+        if (disposed) {
+          return;
+        }
+
+        disposed = true;
+
         for (const disposable of disposables) {
           disposable.dispose();
         }
@@ -79,9 +91,10 @@ export class ActionEditorProvider {
         }
 
         this.loadedAction = undefined;
+      };
 
-        resolve(result);
-        panel.dispose();
+      const sendInit = async () => {
+        await this.postMessage(panel.webview, { type: "init", payload: initPayload });
       };
 
       disposables.push(
@@ -104,16 +117,20 @@ export class ActionEditorProvider {
           }
 
           if (incoming.type === "save") {
-            cleanup(incoming.payload);
+            finalize(incoming.payload);
+            panel.dispose();
             return;
           }
 
           if (incoming.type === "cancel") {
-            cleanup();
+            panel.dispose();
             return;
           }
         }),
-        panel.onDidDispose(() => cleanup()),
+        panel.onDidDispose(() => {
+          cleanup();
+          finalize();
+        }),
       );
 
       void sendInit();

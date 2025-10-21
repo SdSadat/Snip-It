@@ -125,9 +125,9 @@ export class ActionExecutor {
   ): Promise<ActionExecutionResult> {
     const parameterValues = await this.parameterResolver.resolve(action, { providedValues: parameterOverrides });
     const executeOptions: ExecuteOptions = { context, parameterValues };
-    const plan = await this.prepareExecutionPlan(action, executeOptions);
-  const workingDirectory = this.resolveWorkingDirectory(action, context);
-  const spawnOptions = await this.createSpawnOptions(action, executeOptions, workingDirectory);
+    const workingDirectory = this.resolveWorkingDirectory(action, context);
+    const plan = await this.prepareExecutionPlan(action, executeOptions, workingDirectory);
+    const spawnOptions = await this.createSpawnOptions(action, executeOptions, workingDirectory);
     const useOutputChannel = forceOutputChannel || !!action.runInOutputChannel;
 
     if (useOutputChannel) {
@@ -196,12 +196,16 @@ export class ActionExecutor {
     });
   }
 
-  private async prepareExecutionPlan(action: ActionDefinition, options: ExecuteOptions): Promise<ExecutionPlan> {
+  private async prepareExecutionPlan(
+    action: ActionDefinition,
+    options: ExecuteOptions,
+    workingDirectory: string,
+  ): Promise<ExecutionPlan> {
     const resolvedScript = this.replaceTokens(action.script, action, options);
     const suffix = this.getFileExtension(action.language);
     const scriptPath = await this.writeTemporaryScript(action.id, resolvedScript, suffix);
 
-    const command = this.getCommand(action.language);
+    const command = await this.getCommand(action.language, workingDirectory);
     const args = this.getCommandArgs(action.language, scriptPath);
   const finalArgs = action.language === "node" ? this.applyNodeRegisterArgs(args) : args;
 
@@ -316,7 +320,7 @@ export class ActionExecutor {
     }
   }
 
-  private getCommand(language: ActionDefinition["language"]): string {
+  private async getCommand(language: ActionDefinition["language"], workingDirectory: string): Promise<string> {
     if (language === "powershell") {
       return process.platform === "win32" ? "powershell" : "pwsh";
     }
@@ -326,10 +330,67 @@ export class ActionExecutor {
     }
 
     if (language === "python") {
+      const venvPython = await this.findPythonInterpreter(workingDirectory);
+      if (venvPython) {
+        return venvPython;
+      }
       return "python";
     }
 
     return "bash";
+  }
+
+  private async findPythonInterpreter(startDirectory: string): Promise<string | undefined> {
+    let current = path.resolve(startDirectory);
+    const visited = new Set<string>();
+
+    while (!visited.has(current)) {
+      visited.add(current);
+      const found = await this.findPythonInterpreterInDirectory(current);
+      if (found) {
+        return found;
+      }
+
+      const parent = path.dirname(current);
+      if (parent === current) {
+        break;
+      }
+      current = parent;
+    }
+
+    return undefined;
+  }
+
+  private async findPythonInterpreterInDirectory(directory: string): Promise<string | undefined> {
+    const candidates = [".venv", "venv", "env", ".env", "virtualenv", "pyenv"];
+
+    for (const candidate of candidates) {
+      const base = path.join(directory, candidate);
+      const executable = process.platform === "win32"
+        ? path.join(base, "Scripts", "python.exe")
+        : path.join(base, "bin", "python");
+
+      try {
+        await fs.access(executable);
+        return executable;
+      } catch {
+        // ignore missing candidate
+      }
+    }
+
+    const pyenvCfg = path.join(directory, "pyvenv.cfg");
+    try {
+      await fs.access(pyenvCfg);
+      const executable = process.platform === "win32"
+        ? path.join(directory, "Scripts", "python.exe")
+        : path.join(directory, "bin", "python");
+      await fs.access(executable);
+      return executable;
+    } catch {
+      // not a venv root
+    }
+
+    return undefined;
   }
 
   private getCommandArgs(language: ActionDefinition["language"], scriptPath: string): readonly string[] {
