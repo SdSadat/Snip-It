@@ -1,8 +1,13 @@
 {
-  "name": "snip-it",
-  "displayName": "Snip It",
+  "name": "snippet-actions",
+  "displayName": "Snippet Actions",
+  "publisher": "SyedSadatAli",
   "description": "Create, manage, and run reusable actions inside VS Code",
-  "version": "0.0.1",
+  "author": {
+    "name": "Syed Sadat Ali"
+  },
+  "icon": "media/icon.png",
+  "version": "1.0.0",
   "engines": {
     "vscode": "^1.105.0"
   },
@@ -17,164 +22,164 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "snipIt",
-          "title": "Snip It",
+          "id": "snippet",
+          "title": "Snippet",
           "icon": "resources/activity-bar.svg"
         }
       ]
     },
     "views": {
-      "snipIt": [
+      "snippet": [
         {
-          "id": "snipIt.actions",
+          "id": "snippet.actions",
           "name": "Actions"
         }
       ]
     },
     "commands": [
       {
-        "command": "snip-it.newAction",
-        "title": "Snip It: New Action",
+        "command": "snippet.newAction",
+        "title": "Snippet: New Action",
         "icon": "$(add)"
       },
       {
-        "command": "snip-it.editAction",
-        "title": "Snip It: Edit Action",
+        "command": "snippet.editAction",
+        "title": "Snippet: Edit Action",
         "icon": "$(edit)"
       },
       {
-        "command": "snip-it.runAction",
-        "title": "Snip It: Run Action",
+        "command": "snippet.runAction",
+        "title": "Snippet: Run Action",
         "icon": "$(play)"
       },
       {
-        "command": "snip-it.deleteAction",
-        "title": "Snip It: Delete Action",
+        "command": "snippet.deleteAction",
+        "title": "Snippet: Delete Action",
         "icon": "$(trash)"
       },
       {
-        "command": "snip-it.showActionPicker",
-        "title": "Snip It: Run Action...",
+        "command": "snippet.showActionPicker",
+        "title": "Snippet: Run Action...",
         "icon": "$(rocket)"
       },
       {
-        "command": "snip-it.importActions",
-        "title": "Snip It: Import Actions",
+        "command": "snippet.importActions",
+        "title": "Snippet: Import Actions",
         "icon": "$(cloud-download)"
       },
       {
-        "command": "snip-it.exportActions",
-        "title": "Snip It: Export Actions",
+        "command": "snippet.exportActions",
+        "title": "Snippet: Export Actions",
         "icon": "$(cloud-upload)"
       },
       {
-        "command": "snip-it.refreshActions",
-        "title": "Snip It: Refresh Actions",
+        "command": "snippet.refreshActions",
+        "title": "Snippet: Refresh Actions",
         "icon": "$(refresh)"
       }
     ],
     "submenus": [
       {
-        "id": "snip-it.editorSubmenu",
-        "label": "Snip It"
+        "id": "snippet.editorSubmenu",
+        "label": "Snippet"
       },
       {
-        "id": "snip-it.explorerSubmenu",
-        "label": "Snip It"
+        "id": "snippet.explorerSubmenu",
+        "label": "Snippet"
       }
     ],
     "menus": {
       "commandPalette": [
         {
-          "command": "snip-it.newAction"
+          "command": "snippet.newAction"
         },
         {
-          "command": "snip-it.showActionPicker"
+          "command": "snippet.showActionPicker"
         },
         {
-          "command": "snip-it.importActions"
+          "command": "snippet.importActions"
         },
         {
-          "command": "snip-it.exportActions"
+          "command": "snippet.exportActions"
         }
       ],
       "view/title": [
         {
-          "command": "snip-it.newAction",
-          "when": "view == snipIt.actions",
+          "command": "snippet.newAction",
+          "when": "view == snippet.actions",
           "group": "navigation@0"
         },
         {
-          "command": "snip-it.importActions",
-          "when": "view == snipIt.actions",
+          "command": "snippet.importActions",
+          "when": "view == snippet.actions",
           "group": "navigation@1"
         },
         {
-          "command": "snip-it.exportActions",
-          "when": "view == snipIt.actions",
+          "command": "snippet.exportActions",
+          "when": "view == snippet.actions",
           "group": "navigation@2"
         },
         {
-          "command": "snip-it.refreshActions",
-          "when": "view == snipIt.actions",
+          "command": "snippet.refreshActions",
+          "when": "view == snippet.actions",
           "group": "navigation@9"
         }
       ],
       "view/item/context": [
         {
-          "command": "snip-it.runAction",
-          "when": "view == snipIt.actions && viewItem == snipIt.action",
+          "command": "snippet.runAction",
+          "when": "view == snippet.actions && viewItem == snippet.action",
           "group": "inline@0"
         },
         {
-          "command": "snip-it.editAction",
-          "when": "view == snipIt.actions && viewItem == snipIt.action",
+          "command": "snippet.editAction",
+          "when": "view == snippet.actions && viewItem == snippet.action",
           "group": "inline@1"
         },
         {
-          "command": "snip-it.deleteAction",
-          "when": "view == snipIt.actions && viewItem == snipIt.action",
+          "command": "snippet.deleteAction",
+          "when": "view == snippet.actions && viewItem == snippet.action",
           "group": "inline@2"
         }
       ],
       "editor/context": [
         {
-          "submenu": "snip-it.editorSubmenu",
+          "submenu": "snippet.editorSubmenu",
           "group": "navigation@99",
-          "when": "snipIt.hasActions"
+          "when": "snippet.hasActions"
         }
       ],
       "editor/title/context": [
         {
-          "submenu": "snip-it.editorSubmenu",
+          "submenu": "snippet.editorSubmenu",
           "group": "navigation@99",
-          "when": "snipIt.hasActions"
+          "when": "snippet.hasActions"
         }
       ],
       "explorer/context": [
         {
-          "submenu": "snip-it.explorerSubmenu",
+          "submenu": "snippet.explorerSubmenu",
           "group": "navigation@99",
-          "when": "snipIt.hasActions"
+          "when": "snippet.hasActions"
         }
       ],
-      "snip-it.editorSubmenu": [
+      "snippet.editorSubmenu": [
         {
-          "command": "snip-it.showActionPicker",
+          "command": "snippet.showActionPicker",
           "group": "1_run"
         },
         {
-          "command": "snip-it.newAction",
+          "command": "snippet.newAction",
           "group": "9_manage"
         }
       ],
-      "snip-it.explorerSubmenu": [
+      "snippet.explorerSubmenu": [
         {
-          "command": "snip-it.showActionPicker",
+          "command": "snippet.showActionPicker",
           "group": "1_run"
         },
         {
-          "command": "snip-it.newAction",
+          "command": "snippet.newAction",
           "group": "9_manage"
         }
       ]

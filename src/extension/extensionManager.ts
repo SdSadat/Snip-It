@@ -33,7 +33,7 @@ export class ExtensionManager implements Disposable {
         return;
       }
 
-      const selection = await window.showInformationMessage("Copied! Run a Snip It Action?", "Choose Action");
+      const selection = await window.showInformationMessage("Copied! Run a Snippet Action?", "Choose Action");
       if (selection === "Choose Action") {
         await this.actionService.showActionPicker({ clipboardText });
       }
@@ -56,7 +56,7 @@ export class ExtensionManager implements Disposable {
   }
 
   private registerTreeView(): void {
-    const tree = window.createTreeView("snipIt.actions", {
+    const tree = window.createTreeView("snippet.actions", {
       treeDataProvider: this.tree,
     });
 
@@ -65,18 +65,18 @@ export class ExtensionManager implements Disposable {
 
   private registerCommands(): void {
     this.disposables.push(
-      commands.registerCommand("snip-it.newAction", () => this.actionService.createAction()),
-      commands.registerCommand("snip-it.editAction", (node?: ActionTreeNode) => this.handleEditCommand(node)),
-      commands.registerCommand("snip-it.runAction", (nodeOrId?: ActionTreeNode | string) =>
+      commands.registerCommand("snippet.newAction", () => this.actionService.createAction()),
+      commands.registerCommand("snippet.editAction", (node?: ActionTreeNode) => this.handleEditCommand(node)),
+      commands.registerCommand("snippet.runAction", (nodeOrId?: ActionTreeNode | string) =>
         this.handleRunCommand(nodeOrId),
       ),
-      commands.registerCommand("snip-it.deleteAction", (node?: ActionTreeNode) => this.handleDeleteCommand(node)),
-      commands.registerCommand("snip-it.showActionPicker", (resource?: unknown) =>
+      commands.registerCommand("snippet.deleteAction", (node?: ActionTreeNode) => this.handleDeleteCommand(node)),
+      commands.registerCommand("snippet.showActionPicker", (resource?: unknown) =>
         this.actionService.showActionPicker(this.extractContextOverrides(resource)),
       ),
-      commands.registerCommand("snip-it.importActions", () => this.actionService.importActions()),
-      commands.registerCommand("snip-it.exportActions", () => this.actionService.exportActions()),
-      commands.registerCommand("snip-it.refreshActions", () => this.actionService.refresh()),
+      commands.registerCommand("snippet.importActions", () => this.actionService.importActions()),
+      commands.registerCommand("snippet.exportActions", () => this.actionService.exportActions()),
+      commands.registerCommand("snippet.refreshActions", () => this.actionService.refresh()),
     );
   }
 

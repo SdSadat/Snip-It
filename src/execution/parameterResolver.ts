@@ -1,6 +1,5 @@
 import { window } from "vscode";
 import { ActionDefinition } from "../actions/actionTypes";
-import { extractParameterDescriptors } from "./templateEngine";
 
 export interface ParameterResolutionOptions {
   readonly providedValues?: Record<string, string>;
@@ -15,7 +14,7 @@ interface ParameterMetadata {
 
 export class ParameterResolver {
   async resolve(action: ActionDefinition, options: ParameterResolutionOptions = {}): Promise<Record<string, string>> {
-    const descriptors = this.combineMetadata(action);
+  const descriptors = this.combineMetadata(action);
     const results: Record<string, string> = { ...options.providedValues };
 
     for (const descriptor of descriptors) {
@@ -33,10 +32,10 @@ export class ParameterResolver {
   }
 
   private combineMetadata(action: ActionDefinition): readonly ParameterMetadata[] {
-    const fromDefinition = new Map<string, ParameterMetadata>();
+    const descriptors = new Map<string, ParameterMetadata>();
 
     for (const parameter of action.parameters) {
-      fromDefinition.set(parameter.name, {
+      descriptors.set(parameter.name, {
         name: parameter.name,
         prompt: parameter.prompt,
         defaultValue: parameter.defaultValue,
@@ -44,19 +43,7 @@ export class ParameterResolver {
       });
     }
 
-    const fromScript = extractParameterDescriptors(action.script);
-    for (const token of fromScript) {
-      if (!fromDefinition.has(token.name)) {
-        fromDefinition.set(token.name, {
-          name: token.name,
-          prompt: token.prompt,
-          defaultValue: token.defaultValue,
-          required: true,
-        });
-      }
-    }
-
-    return Array.from(fromDefinition.values());
+    return Array.from(descriptors.values());
   }
 
   private async promptForValue(metadata: ParameterMetadata): Promise<string | undefined> {

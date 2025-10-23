@@ -2,8 +2,8 @@ import { Event, EventEmitter, ProviderResult, ThemeIcon, TreeDataProvider, TreeI
 import { ActionDefinition } from "./actionTypes";
 
 const GENERAL_GROUP = "General";
-const TAG_CONTEXT = "snipIt.tag";
-const ACTION_CONTEXT = "snipIt.action";
+const TAG_CONTEXT = "snippet.tag";
+const ACTION_CONTEXT = "snippet.action";
 
 export type ActionTreeNode = ActionGroupNode | ActionLeafNode;
 
@@ -33,7 +33,7 @@ export class ActionTreeItem extends TreeItem {
       this.iconPath = new ThemeIcon("run");
       this.id = `${node.group}:${node.action.id}`;
       this.command = {
-        command: "snip-it.runAction",
+        command: "snippet.runAction",
         title: "Run Action",
         arguments: [node.action.id],
       };
