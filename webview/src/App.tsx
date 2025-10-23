@@ -265,7 +265,7 @@ export const App: React.FC = () => {
           options={monacoOptions}
           onMount={handleMonacoMount}
         />
-        <p className="hint">Use ${`{param:Name:Default:Prompt}`} to declare runtime parameters. Type ${`{`} to see available variables.</p>
+        <p className="hint">Use ${`{varName}`} to use declared variables.</p>
       </section>
 
       <EnvironmentEditor values={draft.env} onChange={value => updateDraft("env", value)} />

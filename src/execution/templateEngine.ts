@@ -6,13 +6,6 @@ export interface TemplateToken {
   readonly args: readonly string[];
 }
 
-export interface ParameterDescriptor {
-  readonly name: string;
-  readonly defaultValue?: string;
-  readonly prompt?: string;
-  readonly raw: string;
-}
-
 export function parseTemplateTokens(source: string): readonly TemplateToken[] {
   const matches: TemplateToken[] = [];
   let match: RegExpExecArray | null;
@@ -30,33 +23,6 @@ export function parseTemplateTokens(source: string): readonly TemplateToken[] {
   }
 
   return matches;
-}
-
-export function extractParameterDescriptors(source: string): readonly ParameterDescriptor[] {
-  const tokens = parseTemplateTokens(source);
-  const parameters: ParameterDescriptor[] = [];
-  const seen = new Set<string>();
-
-  for (const token of tokens) {
-    if (token.key !== "param") {
-      continue;
-    }
-
-    const [name, defaultValue, prompt] = token.args;
-    if (!name || seen.has(name)) {
-      continue;
-    }
-
-    seen.add(name);
-    parameters.push({
-      name,
-      defaultValue,
-      prompt,
-      raw: token.raw,
-    });
-  }
-
-  return parameters;
 }
 
 export function replaceTemplateTokens(source: string, resolver: (token: TemplateToken) => string | undefined): string {

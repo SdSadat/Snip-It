@@ -27,7 +27,7 @@ export async function resolve(specifier, context, defaultResolve) {
       throw error;
     }
 
-    const root = process.env.CODE_BUTLER_WORKING_DIRECTORY;
+    const root = process.env.SNIP_IT_WORKING_DIRECTORY;
     if (!root || !isBareSpecifier(specifier)) {
       throw error;
     }

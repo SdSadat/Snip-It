@@ -1,4 +1,4 @@
-import { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio, spawn } from "child_process";
+import { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio, spawn, spawnSync } from "child_process";
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
@@ -14,11 +14,24 @@ interface ExecutionPlan {
   readonly command: string;
   readonly args: readonly string[];
   readonly scriptPath: string;
+  readonly bashImplementation?: BashImplementation;
 }
 
 interface ExecuteOptions {
   readonly context: ActionExecutionContext;
   readonly parameterValues: Record<string, string>;
+}
+
+type BashImplementation = "posix" | "wsl" | "git-bash" | "other";
+
+interface BashCommandInfo {
+  readonly command: string;
+  readonly implementation: BashImplementation;
+}
+
+interface ResolvedCommand {
+  readonly command: string;
+  readonly bashImplementation?: BashImplementation;
 }
 
 class ProcessTerminal implements Pseudoterminal, Disposable {
@@ -85,7 +98,7 @@ class ProcessTerminal implements Pseudoterminal, Disposable {
 
     this.process.on("close", code => {
       this.onResult({
-        actionId: this.spawnOptions.env?.CODE_BUTLER_ACTION_ID ?? "",
+        actionId: this.spawnOptions.env?.SNIP_IT_ACTION_ID ?? "",
         exitCode: code,
         stdout: stdoutChunks.join(""),
         stderr: stderrChunks.join(""),
@@ -96,7 +109,7 @@ class ProcessTerminal implements Pseudoterminal, Disposable {
     this.process.on("error", error => {
       this.writeEmitter.fire(`[Snip It] Failed to launch process: ${(error as Error).message}\r\n`);
       this.onResult({
-        actionId: this.spawnOptions.env?.CODE_BUTLER_ACTION_ID ?? "",
+        actionId: this.spawnOptions.env?.SNIP_IT_ACTION_ID ?? "",
         exitCode: -1,
         stdout: stdoutChunks.join(""),
         stderr: stderrChunks.concat(String(error)).join(""),
@@ -108,6 +121,7 @@ class ProcessTerminal implements Pseudoterminal, Disposable {
 
 export class ActionExecutor {
   private readonly outputChannel: OutputChannel;
+  private cachedBashInfo?: BashCommandInfo;
 
   constructor(
     private readonly secretManager: SecretManager,
@@ -127,7 +141,7 @@ export class ActionExecutor {
     const executeOptions: ExecuteOptions = { context, parameterValues };
     const workingDirectory = this.resolveWorkingDirectory(action, context);
     const plan = await this.prepareExecutionPlan(action, executeOptions, workingDirectory);
-    const spawnOptions = await this.createSpawnOptions(action, executeOptions, workingDirectory);
+  const spawnOptions = await this.createSpawnOptions(action, executeOptions, workingDirectory, plan);
     const useOutputChannel = forceOutputChannel || !!action.runInOutputChannel;
 
     if (useOutputChannel) {
@@ -201,18 +215,19 @@ export class ActionExecutor {
     options: ExecuteOptions,
     workingDirectory: string,
   ): Promise<ExecutionPlan> {
-    const resolvedScript = this.replaceTokens(action.script, action, options);
+    const commandInfo = await this.getCommand(action.language, workingDirectory);
+    const resolvedScript = this.replaceTokens(action.script, action, options, commandInfo.bashImplementation);
     const suffix = this.getFileExtension(action.language);
     const scriptPath = await this.writeTemporaryScript(action.id, resolvedScript, suffix);
 
-    const command = await this.getCommand(action.language, workingDirectory);
-    const args = this.getCommandArgs(action.language, scriptPath);
-  const finalArgs = action.language === "node" ? this.applyNodeRegisterArgs(args) : args;
+    const args = this.getCommandArgs(action.language, scriptPath, commandInfo.bashImplementation);
+    const finalArgs = action.language === "node" ? this.applyNodeRegisterArgs(args) : args;
 
     return {
-      command,
+      command: commandInfo.command,
       args: finalArgs,
       scriptPath,
+      bashImplementation: commandInfo.bashImplementation,
     };
   }
 
@@ -220,8 +235,9 @@ export class ActionExecutor {
     action: ActionDefinition,
     options: ExecuteOptions,
     workingDirectory: string,
+    plan: ExecutionPlan,
   ): Promise<SpawnOptionsWithoutStdio> {
-    const env = await this.buildEnvironment(action, options, workingDirectory);
+    const env = await this.buildEnvironment(action, options, workingDirectory, plan.bashImplementation);
 
     const spawnOptions: SpawnOptionsWithoutStdio = {
       cwd: workingDirectory,
@@ -235,11 +251,23 @@ export class ActionExecutor {
     action: ActionDefinition,
     options: ExecuteOptions,
     workingDirectory: string,
+    bashImplementation?: BashImplementation,
   ): Promise<NodeJS.ProcessEnv> {
-    const env: NodeJS.ProcessEnv = { ...process.env, CODE_BUTLER_ACTION_ID: action.id };
-    env.CODE_BUTLER_WORKING_DIRECTORY = workingDirectory;
+    const env: NodeJS.ProcessEnv = { ...process.env, SNIP_IT_ACTION_ID: action.id };
+    env.SNIP_IT_WORKING_DIRECTORY = this.normalizePathForShell(workingDirectory, action.language, bashImplementation);
 
-    const substitute = (input?: string) => (input ? this.replaceTokens(input, action, options) : undefined);
+    const substitute = (input?: string) => {
+      if (!input) {
+        return undefined;
+      }
+
+      const replaced = this.replaceTokens(input, action, options, bashImplementation);
+      if (!input.includes("{{")) {
+        return this.normalizePathForShell(replaced, action.language, bashImplementation);
+      }
+
+      return replaced;
+    };
 
     for (const entry of action.env) {
       if (!entry.key) {
@@ -259,7 +287,11 @@ export class ActionExecutor {
     }
 
     for (const parameterName of Object.keys(options.parameterValues)) {
-      env[`PARAM_${parameterName.toUpperCase()}`] = options.parameterValues[parameterName];
+      env[`PARAM_${parameterName.toUpperCase()}`] = this.normalizePathForShell(
+        options.parameterValues[parameterName],
+        action.language,
+        bashImplementation,
+      );
     }
 
     return env;
@@ -284,21 +316,33 @@ export class ActionExecutor {
     return context.workspaceFolder?.fsPath ?? workspace.workspaceFolders?.[0]?.uri.fsPath ?? os.homedir();
   }
 
-  private replaceTokens(source: string, action: ActionDefinition, options: ExecuteOptions): string {
+  private replaceTokens(
+    source: string,
+    action: ActionDefinition,
+    options: ExecuteOptions,
+    bashImplementation?: BashImplementation,
+  ): string {
     return replaceTemplateTokens(source, token => {
       if (token.key === "param") {
         const [name] = token.args;
-        return name ? options.parameterValues[name] : undefined;
+        const value = name ? options.parameterValues[name] : undefined;
+        return value === undefined
+          ? undefined
+          : this.normalizePathForShell(value, action.language, bashImplementation);
       }
 
       const predefined = resolvePredefinedVariable(token.key, options.context);
       if (predefined !== undefined) {
-        return predefined;
+        return this.normalizePathForShell(predefined, action.language, bashImplementation);
       }
 
       const matchingParameter = action.parameters.find(parameter => parameter.name === token.key);
       if (matchingParameter) {
-        return options.parameterValues[matchingParameter.name];
+        return this.normalizePathForShell(
+          options.parameterValues[matchingParameter.name],
+          action.language,
+          bashImplementation,
+        );
       }
 
       return undefined;
@@ -320,24 +364,29 @@ export class ActionExecutor {
     }
   }
 
-  private async getCommand(language: ActionDefinition["language"], workingDirectory: string): Promise<string> {
-    if (language === "powershell") {
-      return process.platform === "win32" ? "powershell" : "pwsh";
-    }
-
-    if (language === "node") {
-      return "node";
-    }
-
-    if (language === "python") {
-      const venvPython = await this.findPythonInterpreter(workingDirectory);
-      if (venvPython) {
-        return venvPython;
+  private async getCommand(language: ActionDefinition["language"], workingDirectory: string): Promise<ResolvedCommand> {
+    switch (language) {
+      case "powershell":
+        return { command: process.platform === "win32" ? "powershell" : "pwsh" };
+      case "node":
+        return { command: "node" };
+      case "python": {
+        const venvPython = await this.findPythonInterpreter(workingDirectory);
+        return { command: venvPython ?? "python" };
       }
-      return "python";
+      case "bash":
+        if (process.platform === "win32") {
+          const info = this.resolveBashCommand();
+          return { command: info.command, bashImplementation: info.implementation };
+        }
+        return { command: "bash", bashImplementation: "posix" };
+      default:
+        if (process.platform === "win32") {
+          const info = this.resolveBashCommand();
+          return { command: info.command, bashImplementation: info.implementation };
+        }
+        return { command: "bash", bashImplementation: "posix" };
     }
-
-    return "bash";
   }
 
   private async findPythonInterpreter(startDirectory: string): Promise<string | undefined> {
@@ -393,10 +442,14 @@ export class ActionExecutor {
     return undefined;
   }
 
-  private getCommandArgs(language: ActionDefinition["language"], scriptPath: string): readonly string[] {
+  private getCommandArgs(
+    language: ActionDefinition["language"],
+    scriptPath: string,
+    bashImplementation?: BashImplementation,
+  ): readonly string[] {
     switch (language) {
       case "bash":
-        return [scriptPath];
+        return [this.convertScriptPathForBash(scriptPath, bashImplementation)];
       case "powershell":
         return ["-File", scriptPath];
       case "python":
@@ -425,6 +478,100 @@ export class ActionExecutor {
     const loaderUrl = pathToFileURL(this.nodeLoaderPath).href;
     const registrationSnippet = `import { register } from "node:module"; import { pathToFileURL } from "node:url"; register(${JSON.stringify(loaderUrl)}, pathToFileURL("./"));`;
     return `data:text/javascript,${encodeURIComponent(registrationSnippet)}`;
+  }
+
+  private resolveBashCommand(): BashCommandInfo {
+    if (this.cachedBashInfo) {
+      return this.cachedBashInfo;
+    }
+
+    if (process.platform !== "win32") {
+      this.cachedBashInfo = { command: "bash", implementation: "posix" };
+      return this.cachedBashInfo;
+    }
+
+    try {
+      const result = spawnSync("where", ["bash"], { encoding: "utf8" });
+      if (result.status === 0 && result.stdout) {
+        const candidates = result.stdout
+          .split(/\r?\n/)
+          .map(line => line.trim())
+          .filter(line => line.length > 0);
+
+        if (candidates.length > 0) {
+          const commandPath = candidates[0];
+          const lower = commandPath.toLowerCase();
+          let implementation: BashImplementation = "other";
+
+          if (lower.includes("\\system32\\bash.exe") || lower.includes("\\system32\\wsl.exe")) {
+            implementation = "wsl";
+          } else if (lower.includes("\\git\\bin\\bash.exe") || lower.includes("\\git\\usr\\bin\\bash.exe")) {
+            implementation = "git-bash";
+          }
+
+          this.cachedBashInfo = { command: commandPath, implementation };
+          return this.cachedBashInfo;
+        }
+      }
+    } catch (error) {
+      console.warn("[Snip It] Failed to resolve bash command:", error);
+    }
+
+    this.cachedBashInfo = { command: "bash", implementation: "other" };
+    return this.cachedBashInfo;
+  }
+
+  private convertScriptPathForBash(scriptPath: string, bashImplementation?: BashImplementation): string {
+    if (process.platform !== "win32") {
+      return scriptPath;
+    }
+
+    if (bashImplementation === "wsl") {
+      return this.convertWindowsPathToWsl(scriptPath);
+    }
+
+    return this.convertWindowsPathToForwardSlash(scriptPath);
+  }
+
+  private convertWindowsPathToWsl(value: string): string {
+    if (/^\/mnt\//i.test(value)) {
+      return value;
+    }
+
+    const driveMatch = value.match(/^([a-zA-Z]):[\\/](.*)$/);
+    if (!driveMatch) {
+      return this.convertWindowsPathToForwardSlash(value);
+    }
+
+    const driveLetter = driveMatch[1].toLowerCase();
+    const remainder = driveMatch[2].replace(/\\/g, "/").replace(/^\/+/u, "");
+    return `/mnt/${driveLetter}/${remainder}`;
+  }
+
+  private convertWindowsPathToForwardSlash(value: string): string {
+    return value.replace(/\\/g, "/");
+  }
+
+  private normalizePathForShell(
+    value: string,
+    language: ActionDefinition["language"],
+    bashImplementation?: BashImplementation,
+  ): string {
+    if (language !== "bash" || process.platform !== "win32") {
+      return value;
+    }
+
+    if (!/^([a-zA-Z]):[\\/]/.test(value)) {
+      return value;
+    }
+
+    if (value.includes(";")) {
+      return value;
+    }
+
+    return bashImplementation === "wsl"
+      ? this.convertWindowsPathToWsl(value)
+      : this.convertWindowsPathToForwardSlash(value);
   }
 
   private async writeTemporaryScript(actionId: string, script: string, extension: string): Promise<string> {

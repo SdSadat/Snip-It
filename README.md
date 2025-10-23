@@ -27,7 +27,7 @@ Snip It is a VS Code extension that lets you capture repeatable snippets of work
    - **Tags** – comma-separated labels used for grouping.
    - **Root Directory** – optional base path; relative imports resolve from here.
    - **Script Language** – choose Bash, PowerShell, Node, or Python.
-4. Author your script in the Monaco editor. Use `${param:Name:Default:Prompt}` to declare parameters or reference predefined variables such as `${workspaceFolder}`.
+4. Author your script in the Monaco editor. reference predefined variables such as `${workspaceFolder}`.
 5. Add environment variables, mark secrets, and define chained actions if needed.
 6. Click **Test Action** to run a dry run from the editor. Output (stdout/stderr) shows in-line, and any necessary secrets/parameters are prompted.
 7. Save the action. It appears in the Snip It view and context menus.
@@ -51,19 +51,3 @@ Snip It is a VS Code extension that lets you capture repeatable snippets of work
 - During execution Secrets resolve to `PARAM_` values or environment variables as appropriate.
 
 ---
-
-## Project Structure
-
-```text
-src/
-  actions/         # Action persistence, tree view, service layer
-  execution/       # Executor, parameter resolver, predefined variables
-  secrets/         # Secret management wrappers
-  triggers/        # Clipboard trigger integration
-  webview/         # Webview provider and message contracts
-webview/           # React + Vite authoring UI for actions
-media/             # Bundled webview assets (generated)
-resources/         # Custom Node loader for workspace-relative imports
-docs/              # Design/implementation notes
-```
-
