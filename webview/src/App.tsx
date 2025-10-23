@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VSCodeButton, VSCodeCheckbox, VSCodeDropdown, VSCodeOption, VSCodeTextArea, VSCodeTextField } from "@vscode/webview-ui-toolkit/react";
 import Editor, { type Monaco } from "@monaco-editor/react";
 import {
@@ -53,9 +53,21 @@ export const App: React.FC = () => {
   const [state, setState] = useState<State>(defaultState);
   const [draft, setDraft] = useState<ActionEditorDraft>(defaultDraft());
   const [testStatus, setTestStatus] = useState<TestStatus>({ state: "idle" });
+  const validationMessages = useMemo(() => validateDraft(draft, state.availableActions), [draft, state.availableActions]);
+  const hasBlockingErrors = validationMessages.length > 0;
 
   const predefinedVariables = state.predefinedVariables;
   const availableActions = state.availableActions;
+  const latestDraftRef = useRef<ActionEditorDraft>(draft);
+  const latestPredefinedRef = useRef<readonly PredefinedVariable[]>(predefinedVariables);
+
+  useEffect(() => {
+    latestDraftRef.current = draft;
+  }, [draft]);
+
+  useEffect(() => {
+    latestPredefinedRef.current = predefinedVariables;
+  }, [predefinedVariables]);
 
   useEffect(() => {
     const listener = (event: MessageEvent<ExtensionMessage>) => {
@@ -120,16 +132,32 @@ export const App: React.FC = () => {
     [],
   );
 
+  const resetTestStatus = useCallback(() => {
+    setTestStatus(prev => (prev.state === "idle" ? prev : { state: "idle" }));
+  }, []);
+
   const handleMonacoMount = (_editor: unknown, monaco: Monaco) => {
     createMonacoCompletionProvider(monaco, () => ({
-      predefined: predefinedVariables,
-      parameters: draft?.parameters ?? [],
+      predefined: latestPredefinedRef.current,
+      parameters: latestDraftRef.current?.parameters ?? [],
     }));
   };
 
-  const updateDraft = <Key extends keyof ActionEditorDraft>(key: Key, value: ActionEditorDraft[Key]) => {
-    setDraft(prev => ({ ...prev, [key]: value }));
-  };
+  const updateDraft = useCallback(<Key extends keyof ActionEditorDraft>(key: Key, value: ActionEditorDraft[Key]) => {
+    let didChange = false;
+    setDraft(prev => {
+      if (prev[key] === value) {
+        return prev;
+      }
+
+      didChange = true;
+      return { ...prev, [key]: value };
+    });
+
+    if (didChange) {
+      resetTestStatus();
+    }
+  }, [resetTestStatus]);
 
   const handleTest = () => {
     setTestStatus({ state: "running" });
@@ -154,12 +182,35 @@ export const App: React.FC = () => {
         <h1>Snip It Action</h1>
         <div className="header-actions">
           <VSCodeButton appearance="secondary" onClick={handleCancel}>Cancel</VSCodeButton>
-          <VSCodeButton appearance="secondary" onClick={handleTest} disabled={testStatus.state === "running"}>
+          <VSCodeButton
+            appearance="secondary"
+            onClick={handleTest}
+            disabled={testStatus.state === "running" || hasBlockingErrors}
+            title={hasBlockingErrors ? "Resolve validation issues before testing." : undefined}
+          >
             {testStatus.state === "running" ? "Testing..." : "Test Action"}
           </VSCodeButton>
-          <VSCodeButton appearance="primary" onClick={handleSubmit}>Save Action</VSCodeButton>
+          <VSCodeButton
+            appearance="primary"
+            onClick={handleSubmit}
+            disabled={hasBlockingErrors}
+            title={hasBlockingErrors ? "Resolve validation issues before saving." : undefined}
+          >
+            Save Action
+          </VSCodeButton>
         </div>
       </header>
+
+      {validationMessages.length > 0 && (
+        <div className="validation-summary" role="alert">
+          <strong>Resolve these issues before running the action:</strong>
+          <ul>
+            {validationMessages.map(message => (
+              <li key={message}>{message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {testStatus.state !== "idle" && (
         <div className={`test-status ${testStatus.state}`}>
@@ -260,6 +311,8 @@ export const App: React.FC = () => {
         <Editor
           height="280px"
           defaultLanguage={languageToMonacoLanguage(draft.language)}
+          language={languageToMonacoLanguage(draft.language)}
+          path={getScriptModelPath(draft.language)}
           value={draft.script}
           onChange={value => updateDraft("script", value ?? "")}
           options={monacoOptions}
@@ -526,17 +579,123 @@ function languageToMonacoLanguage(language: ScriptLanguage): string {
   }
 }
 
+function getScriptModelPath(language: ScriptLanguage): string {
+  switch (language) {
+    case "bash":
+      return "inmemory://model/action.sh";
+    case "powershell":
+      return "inmemory://model/action.ps1";
+    case "python":
+      return "inmemory://model/action.py";
+    case "node":
+      return "inmemory://model/action.mjs";
+    default:
+      return "inmemory://model/action.txt";
+  }
+}
+
 function sanitizeDraftBeforeSave(draft: ActionEditorDraft): ActionEditorDraft {
   return {
     ...draft,
     tags: draft.tags.map(tag => tag.trim()).filter(Boolean),
     script: draft.script.replace(/\$\{([\w-]+)(?::[^}]+)?}/g, "${$1}"),
-    env: draft.env.map(variable => ({
-      ...variable,
-      value: variable.fromSecret ? undefined : variable.value,
+    env: draft.env.map(variable => {
+      const key = variable.key.trim();
+
+      if (variable.fromSecret) {
+        const trimmedSecretKey = variable.secretKey?.trim();
+        const trimmedSecretValue = variable.secretValue?.trim();
+        return {
+          ...variable,
+          key,
+          value: undefined,
+          secretKey: trimmedSecretKey || undefined,
+          secretValue: variable.secretValue === null
+            ? null
+            : trimmedSecretValue || undefined,
+        };
+      }
+
+      return {
+        ...variable,
+        key,
+        value: variable.value?.trim() ?? "",
+        secretKey: undefined,
+        secretValue: undefined,
+      };
+    }),
+    parameters: draft.parameters.map(parameter => ({
+      ...parameter,
+      name: parameter.name.trim(),
+      prompt: parameter.prompt?.trim(),
+      defaultValue: parameter.defaultValue?.trim(),
+    })),
+    chain: draft.chain?.map(link => ({
+      targetActionId: link.targetActionId,
+      passOutputAs: link.passOutputAs?.trim() || undefined,
     })),
     workingDirectory: draft.workingDirectory?.trim() ? draft.workingDirectory.trim() : undefined,
   };
+}
+
+function validateDraft(
+  draft: ActionEditorDraft,
+  availableActions: readonly ActionEditorAvailableAction[],
+): string[] {
+  const issues: string[] = [];
+
+  if (!draft.name.trim()) {
+    issues.push("Action name is required.");
+  }
+
+  if (!draft.script.trim()) {
+    issues.push("Script content cannot be empty.");
+  }
+
+  const envKeys = new Set<string>();
+  draft.env.forEach((variable, index) => {
+    const key = variable.key.trim();
+    if (!key) {
+      issues.push(`Environment variable #${index + 1} needs a key.`);
+      return;
+    }
+
+    const normalized = key.toLowerCase();
+    if (envKeys.has(normalized)) {
+      issues.push(`Environment variable "${key}" is defined more than once.`);
+    }
+    envKeys.add(normalized);
+  });
+
+  const parameterNames = new Set<string>();
+  draft.parameters.forEach((parameter, index) => {
+    const name = parameter.name?.trim() ?? "";
+    if (!name) {
+      issues.push(`Parameter #${index + 1} needs a name.`);
+      return;
+    }
+
+    const normalized = name.toLowerCase();
+    if (parameterNames.has(normalized)) {
+      issues.push(`Parameter "${name}" is defined more than once.`);
+    }
+    parameterNames.add(normalized);
+  });
+
+  draft.chain?.forEach((link, index) => {
+    if (!link.targetActionId) {
+      issues.push(`Chained action #${index + 1} needs a selected action.`);
+    } else if (!availableActions.some(action => action.id === link.targetActionId)) {
+      issues.push(`Chained action #${index + 1} references an unavailable action.`);
+    }
+
+    const paramName = link.passOutputAs?.trim();
+    if (paramName && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(paramName)) {
+      issues.push(`Chained action #${index + 1} output alias must be a valid parameter name.`);
+    }
+  });
+
+  return Array.from(new Set(issues));
 }
 
 interface VsCodeApi {

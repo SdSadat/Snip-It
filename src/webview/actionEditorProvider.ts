@@ -22,6 +22,9 @@ interface InitPayload {
 
 export class ActionEditorProvider {
   private currentPanel: WebviewPanel | undefined;
+  private panelDisposables: Disposable[] = [];
+  private pendingResolver?: (result: ActionEditorDraft | undefined) => void;
+  private pendingInitPayload?: InitPayload;
   private loadedAction: ActionDefinition | undefined;
   private tester?: (draft: ActionEditorDraft, baseAction: ActionDefinition | undefined) => Promise<ActionExecutionResult>;
 
@@ -38,107 +41,111 @@ export class ActionEditorProvider {
   async showEditor(action?: ActionDefinition): Promise<ActionEditorDraft | undefined> {
     this.loadedAction = action;
     const initPayload = await this.createInitPayload(action);
+    const panel = await this.ensurePanel();
 
-    if (this.currentPanel) {
-      const existingPanel = this.currentPanel;
-      existingPanel.title = action ? `Edit Action: ${action.name}` : "New Snip It Action";
-      existingPanel.reveal(ViewColumn.One);
-      await this.postMessage(existingPanel.webview, { type: "focus" });
-      await this.postMessage(existingPanel.webview, { type: "init", payload: initPayload });
-      return undefined;
-    }
+    panel.title = action ? `Edit Action: ${action.name}` : "New Snip It Action";
+    panel.reveal(ViewColumn.One);
 
-    const panel = window.createWebviewPanel(
-      "snipIt.actionEditor",
-      action ? `Edit Action: ${action.name}` : "New Snip It Action",
-      ViewColumn.One,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-        localResourceRoots: [this.getMediaRoot()]
-      },
-    );
+    this.pendingInitPayload = initPayload;
+    this.resolvePending();
 
-    this.currentPanel = panel;
-
-    panel.webview.html = await this.renderHtml(panel.webview);
-
-    return await new Promise<ActionEditorDraft | undefined>(resolve => {
-      const disposables: Disposable[] = [];
-      let settled = false;
-      let disposed = false;
-
-      const finalize = (result?: ActionEditorDraft) => {
-        if (!settled) {
-          settled = true;
-          resolve(result);
-        }
-      };
-
-      const cleanup = () => {
-        if (disposed) {
-          return;
-        }
-
-        disposed = true;
-
-        for (const disposable of disposables) {
-          disposable.dispose();
-        }
-
-        if (this.currentPanel === panel) {
-          this.currentPanel = undefined;
-        }
-
-        this.loadedAction = undefined;
-      };
-
-      const sendInit = async () => {
-        await this.postMessage(panel.webview, { type: "init", payload: initPayload });
-      };
-
-      disposables.push(
-        panel.webview.onDidReceiveMessage(async message => {
-          const incoming = message as WebviewMessage;
-
-          if (incoming.type === "ready") {
-            await sendInit();
-            return;
-          }
-
-          if (incoming.type === "selectRootDirectory") {
-            await this.handleRootDirectoryRequest(panel);
-            return;
-          }
-
-          if (incoming.type === "test") {
-            await this.handleTest(panel, incoming.payload);
-            return;
-          }
-
-          if (incoming.type === "save") {
-            finalize(incoming.payload);
-            panel.dispose();
-            return;
-          }
-
-          if (incoming.type === "cancel") {
-            panel.dispose();
-            return;
-          }
-        }),
-        panel.onDidDispose(() => {
-          cleanup();
-          finalize();
-        }),
-      );
-
-      void sendInit();
+    const completion = new Promise<ActionEditorDraft | undefined>(resolve => {
+      this.pendingResolver = resolve;
     });
+
+    void this.postMessage(panel.webview, { type: "focus" });
+    void this.sendInit(panel.webview);
+
+    return completion;
   }
 
   private getMediaRoot(): Uri {
     return Uri.joinPath(this.context.extensionUri, "media", "action-editor");
+  }
+
+  private async ensurePanel(): Promise<WebviewPanel> {
+    if (this.currentPanel) {
+      return this.currentPanel;
+    }
+
+    const panel = window.createWebviewPanel(
+      "snipIt.actionEditor",
+      "Snip It Action",
+      ViewColumn.One,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [this.getMediaRoot()],
+      },
+    );
+
+    panel.webview.html = await this.renderHtml(panel.webview);
+
+    this.panelDisposables = [
+      panel.webview.onDidReceiveMessage(message => this.handleWebviewMessage(panel, message as WebviewMessage)),
+      panel.onDidDispose(() => this.disposePanel(panel)),
+    ];
+
+    this.currentPanel = panel;
+    return panel;
+  }
+
+  private async handleWebviewMessage(panel: WebviewPanel, incoming: WebviewMessage): Promise<void> {
+    switch (incoming.type) {
+      case "ready":
+        await this.sendInit(panel.webview);
+        return;
+      case "selectRootDirectory":
+        await this.handleRootDirectoryRequest(panel);
+        return;
+      case "test":
+        await this.handleTest(panel, incoming.payload);
+        return;
+      case "save":
+        this.resolvePending(incoming.payload);
+        panel.dispose();
+        return;
+      case "cancel":
+        panel.dispose();
+        return;
+      default:
+        return;
+    }
+  }
+
+  private disposePanel(panel: WebviewPanel): void {
+    if (this.currentPanel !== panel) {
+      return;
+    }
+
+    for (const disposable of this.panelDisposables) {
+      disposable.dispose();
+    }
+    this.panelDisposables = [];
+
+    this.currentPanel = undefined;
+    this.loadedAction = undefined;
+    this.pendingInitPayload = undefined;
+
+    this.resolvePending();
+  }
+
+  private resolvePending(result?: ActionEditorDraft): void {
+    if (!this.pendingResolver) {
+      return;
+    }
+
+    const resolver = this.pendingResolver;
+    this.pendingResolver = undefined;
+    resolver(result);
+  }
+
+  private async sendInit(webview: Webview): Promise<void> {
+    if (!this.pendingInitPayload) {
+      return;
+    }
+
+    await this.postMessage(webview, { type: "init", payload: this.pendingInitPayload });
   }
 
   private async renderHtml(webview: Webview): Promise<string> {

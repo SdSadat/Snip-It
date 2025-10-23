@@ -98,7 +98,7 @@ class ProcessTerminal implements Pseudoterminal, Disposable {
 
     this.process.on("close", code => {
       this.onResult({
-        actionId: this.spawnOptions.env?.SNIP_IT_ACTION_ID ?? "",
+  actionId: this.spawnOptions.env?.SNIP_IT_ACTION_ID ?? "",
         exitCode: code,
         stdout: stdoutChunks.join(""),
         stderr: stderrChunks.join(""),
@@ -109,7 +109,7 @@ class ProcessTerminal implements Pseudoterminal, Disposable {
     this.process.on("error", error => {
       this.writeEmitter.fire(`[Snip It] Failed to launch process: ${(error as Error).message}\r\n`);
       this.onResult({
-        actionId: this.spawnOptions.env?.SNIP_IT_ACTION_ID ?? "",
+  actionId: this.spawnOptions.env?.SNIP_IT_ACTION_ID ?? "",
         exitCode: -1,
         stdout: stdoutChunks.join(""),
         stderr: stderrChunks.concat(String(error)).join(""),
@@ -141,14 +141,25 @@ export class ActionExecutor {
     const executeOptions: ExecuteOptions = { context, parameterValues };
     const workingDirectory = this.resolveWorkingDirectory(action, context);
     const plan = await this.prepareExecutionPlan(action, executeOptions, workingDirectory);
-  const spawnOptions = await this.createSpawnOptions(action, executeOptions, workingDirectory, plan);
+    const spawnOptions = await this.createSpawnOptions(action, executeOptions, workingDirectory, plan);
     const useOutputChannel = forceOutputChannel || !!action.runInOutputChannel;
 
+    this.logExecutionPlan(action, workingDirectory, plan, spawnOptions, useOutputChannel);
+
     if (useOutputChannel) {
-      return this.runWithOutputChannel(action, plan, spawnOptions);
+      this.outputChannel.show(true);
     }
 
-    return this.runWithTerminal(action, plan, spawnOptions);
+    try {
+      if (useOutputChannel) {
+        return await this.runWithOutputChannel(action, plan, spawnOptions);
+      }
+
+      return await this.runWithTerminal(action, plan, spawnOptions);
+    } catch (error) {
+      this.outputChannel.appendLine(`✖ ${action.name} failed: ${(error as Error).message}`);
+      throw error;
+    }
   }
 
   getPredefinedVariables(): readonly { name: string; description: string }[] {
@@ -156,17 +167,23 @@ export class ActionExecutor {
   }
 
   private async runWithTerminal(action: ActionDefinition, plan: ExecutionPlan, spawnOptions: SpawnOptionsWithoutStdio): Promise<ActionExecutionResult> {
-    return await new Promise<ActionExecutionResult>(resolve => {
-      const terminal = new ProcessTerminal(plan, spawnOptions, result => resolve(result));
-      const vscodeTerminal: Terminal = window.createTerminal({
-        name: `Snip It: ${action.name}`,
-        pty: terminal,
+    let resolved: ActionExecutionResult | undefined;
+    try {
+      resolved = await new Promise<ActionExecutionResult>(resolve => {
+        const terminal = new ProcessTerminal(plan, spawnOptions, result => resolve(result));
+        const vscodeTerminal: Terminal = window.createTerminal({
+          name: `Snip It: ${action.name}`,
+          pty: terminal,
+        });
+
+        vscodeTerminal.show(true);
       });
 
-      vscodeTerminal.show(true);
-    }).finally(async () => {
+      this.outputChannel.appendLine(`↳ exited with code ${resolved.exitCode ?? 0}`);
+      return resolved;
+    } finally {
       await this.cleanup(plan.scriptPath);
-    });
+    }
   }
 
   private async runWithOutputChannel(action: ActionDefinition, plan: ExecutionPlan, spawnOptions: SpawnOptionsWithoutStdio): Promise<ActionExecutionResult> {
@@ -216,7 +233,7 @@ export class ActionExecutor {
     workingDirectory: string,
   ): Promise<ExecutionPlan> {
     const commandInfo = await this.getCommand(action.language, workingDirectory);
-    const resolvedScript = this.replaceTokens(action.script, action, options, commandInfo.bashImplementation);
+    const resolvedScript = this.replaceTokens(action.script, action, options, commandInfo.bashImplementation, "script");
     const suffix = this.getFileExtension(action.language);
     const scriptPath = await this.writeTemporaryScript(action.id, resolvedScript, suffix);
 
@@ -261,7 +278,7 @@ export class ActionExecutor {
         return undefined;
       }
 
-      const replaced = this.replaceTokens(input, action, options, bashImplementation);
+      const replaced = this.replaceTokens(input, action, options, bashImplementation, "environment");
       if (!input.includes("{{")) {
         return this.normalizePathForShell(replaced, action.language, bashImplementation);
       }
@@ -321,6 +338,7 @@ export class ActionExecutor {
     action: ActionDefinition,
     options: ExecuteOptions,
     bashImplementation?: BashImplementation,
+    target: "script" | "environment" = "script",
   ): string {
     return replaceTemplateTokens(source, token => {
       if (token.key === "param") {
@@ -328,21 +346,17 @@ export class ActionExecutor {
         const value = name ? options.parameterValues[name] : undefined;
         return value === undefined
           ? undefined
-          : this.normalizePathForShell(value, action.language, bashImplementation);
+          : this.formatTokenValue(value, action.language, bashImplementation, target);
       }
 
       const predefined = resolvePredefinedVariable(token.key, options.context);
       if (predefined !== undefined) {
-        return this.normalizePathForShell(predefined, action.language, bashImplementation);
+        return this.formatTokenValue(predefined, action.language, bashImplementation, target);
       }
 
       const matchingParameter = action.parameters.find(parameter => parameter.name === token.key);
       if (matchingParameter) {
-        return this.normalizePathForShell(
-          options.parameterValues[matchingParameter.name],
-          action.language,
-          bashImplementation,
-        );
+        return this.formatTokenValue(options.parameterValues[matchingParameter.name], action.language, bashImplementation, target);
       }
 
       return undefined;
@@ -480,6 +494,78 @@ export class ActionExecutor {
     return `data:text/javascript,${encodeURIComponent(registrationSnippet)}`;
   }
 
+  private logExecutionPlan(
+    action: ActionDefinition,
+    workingDirectory: string,
+    plan: ExecutionPlan,
+    spawnOptions: SpawnOptionsWithoutStdio,
+    useOutputChannel: boolean,
+  ): void {
+    const timestamp = new Date().toISOString();
+    const args = this.formatArgsForLog(plan.args);
+    const interestingEnv = this.collectInterestingEnvKeys(action, spawnOptions.env);
+    const cwd = spawnOptions.cwd ?? workingDirectory;
+
+    if (!useOutputChannel) {
+      this.outputChannel.appendLine(`▶ ${action.name}`);
+    }
+
+    this.outputChannel.appendLine(
+      `  - ${timestamp} | language=${action.language} cwd=${cwd}`,
+    );
+    this.outputChannel.appendLine(`    command: ${plan.command}${args ? ` ${args}` : ""}`);
+
+    if (interestingEnv) {
+      this.outputChannel.appendLine(`    env keys: ${interestingEnv}`);
+    }
+  }
+
+  private formatArgsForLog(args: readonly string[]): string {
+    if (!args || args.length === 0) {
+      return "";
+    }
+
+    return args
+      .map(arg => {
+        if (/\s/.test(arg) || arg.includes("\"")) {
+          return `"${arg.replace(/"/g, '\\"')}"`;
+        }
+        return arg;
+      })
+      .join(" ");
+  }
+
+  private collectInterestingEnvKeys(action: ActionDefinition, env?: NodeJS.ProcessEnv): string | undefined {
+    if (!env) {
+      return undefined;
+    }
+
+    const interesting = new Set<string>();
+    const actionEnvKeys = new Set(action.env.map(variable => variable.key));
+    for (const key of Object.keys(env)) {
+  if (key.startsWith("SNIP_IT_")) {
+        interesting.add(key);
+        continue;
+      }
+
+      if (key.startsWith("PARAM_")) {
+        interesting.add(key);
+        continue;
+      }
+
+      if (actionEnvKeys.has(key)) {
+        interesting.add(key);
+      }
+    }
+
+    if (interesting.size === 0) {
+      return undefined;
+    }
+
+    const sorted = Array.from(interesting).sort((a, b) => a.localeCompare(b));
+    return sorted.join(", ");
+  }
+
   private resolveBashCommand(): BashCommandInfo {
     if (this.cachedBashInfo) {
       return this.cachedBashInfo;
@@ -572,6 +658,21 @@ export class ActionExecutor {
     return bashImplementation === "wsl"
       ? this.convertWindowsPathToWsl(value)
       : this.convertWindowsPathToForwardSlash(value);
+  }
+
+  private formatTokenValue(
+    value: string,
+    language: ActionDefinition["language"],
+    bashImplementation: BashImplementation | undefined,
+    target: "script" | "environment",
+  ): string {
+    const normalized = this.normalizePathForShell(value, language, bashImplementation);
+
+    if (target === "script" && language === "node" && process.platform === "win32") {
+      return normalized.replace(/\\/g, "\\\\");
+    }
+
+    return normalized;
   }
 
   private async writeTemporaryScript(actionId: string, script: string, extension: string): Promise<string> {
