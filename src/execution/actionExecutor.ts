@@ -98,7 +98,7 @@ class ProcessTerminal implements Pseudoterminal, Disposable {
 
     this.process.on("close", code => {
       this.onResult({
-  actionId: this.spawnOptions.env?.SNIP_IT_ACTION_ID ?? "",
+  actionId: this.spawnOptions.env?.SNIPPET_ACTION_ID ?? "",
         exitCode: code,
         stdout: stdoutChunks.join(""),
         stderr: stderrChunks.join(""),
@@ -107,9 +107,9 @@ class ProcessTerminal implements Pseudoterminal, Disposable {
     });
 
     this.process.on("error", error => {
-      this.writeEmitter.fire(`[Snip It] Failed to launch process: ${(error as Error).message}\r\n`);
+      this.writeEmitter.fire(`[Snippet] Failed to launch process: ${(error as Error).message}\r\n`);
       this.onResult({
-  actionId: this.spawnOptions.env?.SNIP_IT_ACTION_ID ?? "",
+  actionId: this.spawnOptions.env?.SNIPPET_ACTION_ID ?? "",
         exitCode: -1,
         stdout: stdoutChunks.join(""),
         stderr: stderrChunks.concat(String(error)).join(""),
@@ -128,7 +128,7 @@ export class ActionExecutor {
     private readonly parameterResolver: ParameterResolver,
     private readonly nodeLoaderPath?: string,
   ) {
-    this.outputChannel = window.createOutputChannel("Snip It");
+    this.outputChannel = window.createOutputChannel("Snippet");
   }
 
   async execute(
@@ -172,7 +172,7 @@ export class ActionExecutor {
       resolved = await new Promise<ActionExecutionResult>(resolve => {
         const terminal = new ProcessTerminal(plan, spawnOptions, result => resolve(result));
         const vscodeTerminal: Terminal = window.createTerminal({
-          name: `Snip It: ${action.name}`,
+          name: `Snippet: ${action.name}`,
           pty: terminal,
         });
 
@@ -270,8 +270,8 @@ export class ActionExecutor {
     workingDirectory: string,
     bashImplementation?: BashImplementation,
   ): Promise<NodeJS.ProcessEnv> {
-    const env: NodeJS.ProcessEnv = { ...process.env, SNIP_IT_ACTION_ID: action.id };
-    env.SNIP_IT_WORKING_DIRECTORY = this.normalizePathForShell(workingDirectory, action.language, bashImplementation);
+    const env: NodeJS.ProcessEnv = { ...process.env, SNIPPET_ACTION_ID: action.id };
+    env.SNIPPET_WORKING_DIRECTORY = this.normalizePathForShell(workingDirectory, action.language, bashImplementation);
 
     const substitute = (input?: string) => {
       if (!input) {
@@ -543,7 +543,7 @@ export class ActionExecutor {
     const interesting = new Set<string>();
     const actionEnvKeys = new Set(action.env.map(variable => variable.key));
     for (const key of Object.keys(env)) {
-  if (key.startsWith("SNIP_IT_")) {
+  if (key.startsWith("SNIPPET_")) {
         interesting.add(key);
         continue;
       }
@@ -600,7 +600,7 @@ export class ActionExecutor {
         }
       }
     } catch (error) {
-      console.warn("[Snip It] Failed to resolve bash command:", error);
+      console.warn("[Snippet] Failed to resolve bash command:", error);
     }
 
     this.cachedBashInfo = { command: "bash", implementation: "other" };
@@ -677,7 +677,7 @@ export class ActionExecutor {
 
   private async writeTemporaryScript(actionId: string, script: string, extension: string): Promise<string> {
     const fileName = `${actionId}-${Date.now()}${extension}`;
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "snip-it-"));
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "snippet-"));
     const scriptPath = path.join(tempDir, fileName);
     const normalized = script.replace(/\r?\n/g, os.EOL);
     await fs.writeFile(scriptPath, normalized, { encoding: "utf8", mode: 0o700 });
@@ -691,7 +691,7 @@ export class ActionExecutor {
       await fs.rm(folder, { recursive: true, force: true });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        console.warn(`[Snip It] Failed to remove temp script ${scriptPath}:`, error);
+        console.warn(`[Snippet] Failed to remove temp script ${scriptPath}:`, error);
       }
     }
   }

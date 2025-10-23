@@ -22,7 +22,7 @@ import {
   ActionEditorChainLink,
 } from "../webview/types";
 
-const CONTEXT_HAS_ACTIONS = "snipIt.hasActions";
+const CONTEXT_HAS_ACTIONS = "snippet.hasActions";
 
 export class ActionService implements Disposable {
   private readonly disposables: Disposable[] = [];
@@ -195,7 +195,7 @@ export class ActionService implements Disposable {
 
   async showActionPicker(contextOverrides?: Partial<ActionExecutionContext>): Promise<void> {
     if (this.activeActions.length === 0) {
-      window.showInformationMessage("No Snip It actions found. Create one first.");
+      window.showInformationMessage("No Snippet actions found. Create one first.");
       return;
     }
 
@@ -209,7 +209,7 @@ export class ActionService implements Disposable {
       }));
 
     const selection = await window.showQuickPick(items, {
-      placeHolder: "Select a Snip It action",
+      placeHolder: "Select a Snippet action",
       matchOnDetail: true,
       matchOnDescription: true,
     });
@@ -223,9 +223,9 @@ export class ActionService implements Disposable {
 
   async importActions(): Promise<void> {
     const result = await window.showOpenDialog({
-      title: "Import Snip It actions",
+      title: "Import Snippet actions",
       canSelectMany: false,
-      filters: { "Snip It": ["json"] },
+      filters: { "Snippet": ["json"] },
     });
 
     if (!result || result.length === 0) {
@@ -314,7 +314,7 @@ export class ActionService implements Disposable {
       }
 
       if (imported.length === 0) {
-        window.showWarningMessage("No valid Snip It actions found in the selected file.");
+        window.showWarningMessage("No valid Snippet actions found in the selected file.");
         return;
       }
 
@@ -327,9 +327,9 @@ export class ActionService implements Disposable {
 
   async exportActions(): Promise<void> {
     const target = await window.showSaveDialog({
-      title: "Export Snip It actions",
-      filters: { "Snip It": ["json"] },
-      defaultUri: Uri.file(path.join(osTmpDir(), "snip-it-actions.json")),
+      title: "Export Snippet actions",
+      filters: { "Snippet": ["json"] },
+      defaultUri: Uri.file(path.join(osTmpDir(), "snippet-actions.json")),
     });
 
     if (!target) {

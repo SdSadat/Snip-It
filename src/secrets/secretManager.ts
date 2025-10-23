@@ -1,6 +1,6 @@
 import { SecretStorage } from "vscode";
 
-const SECRET_PREFIX = "snip-it";
+const SECRET_PREFIX = "snippet";
 
 export class SecretManager {
   constructor(private readonly storage: SecretStorage) {}

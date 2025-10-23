@@ -43,7 +43,7 @@ export class ActionEditorProvider {
     const initPayload = await this.createInitPayload(action);
     const panel = await this.ensurePanel();
 
-    panel.title = action ? `Edit Action: ${action.name}` : "New Snip It Action";
+    panel.title = action ? `Edit Action: ${action.name}` : "New Snippet Action";
     panel.reveal(ViewColumn.One);
 
     this.pendingInitPayload = initPayload;
@@ -69,8 +69,8 @@ export class ActionEditorProvider {
     }
 
     const panel = window.createWebviewPanel(
-      "snipIt.actionEditor",
-      "Snip It Action",
+      "snippet.actionEditor",
+      "Snippet Action",
       ViewColumn.One,
       {
         enableScripts: true,
@@ -179,7 +179,7 @@ export class ActionEditorProvider {
 <meta charset="UTF-8" />
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Snip It Action Editor</title>
+<title>Snippet Action Editor</title>
 ${styles}
 </head>
 <body>
@@ -277,7 +277,7 @@ ${styles}
     try {
       await webview.postMessage(message);
     } catch (error) {
-      console.warn(`[Snip It] Unable to send action editor message "${message.type}"`, error);
+      console.warn(`[Snippet] Unable to send action editor message "${message.type}"`, error);
     }
   }
 

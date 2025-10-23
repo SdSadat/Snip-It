@@ -179,7 +179,7 @@ export const App: React.FC = () => {
   return (
     <div className="container">
       <header className="header">
-        <h1>Snip It Action</h1>
+        <h1>Snippet Action</h1>
         <div className="header-actions">
           <VSCodeButton appearance="secondary" onClick={handleCancel}>Cancel</VSCodeButton>
           <VSCodeButton
@@ -334,7 +334,7 @@ export const App: React.FC = () => {
           checked={draft.runInOutputChannel ?? false}
           onChange={event => updateDraft("runInOutputChannel", (event.target as HTMLInputElement).checked)}
         >
-          Send output to Snip It output channel instead of a terminal.
+          Send output to Snippet output channel instead of a terminal.
         </VSCodeCheckbox>
       </section>
 
@@ -598,7 +598,7 @@ function sanitizeDraftBeforeSave(draft: ActionEditorDraft): ActionEditorDraft {
   return {
     ...draft,
     tags: draft.tags.map(tag => tag.trim()).filter(Boolean),
-    script: draft.script.replace(/\$\{([\w-]+)(?::[^}]+)?}/g, "${$1}"),
+    script: normalizeScriptTokens(draft.script),
     env: draft.env.map(variable => {
       const key = variable.key.trim();
 
@@ -636,6 +636,23 @@ function sanitizeDraftBeforeSave(draft: ActionEditorDraft): ActionEditorDraft {
     })),
     workingDirectory: draft.workingDirectory?.trim() ? draft.workingDirectory.trim() : undefined,
   };
+}
+
+function normalizeScriptTokens(script: string): string {
+  return script.replace(/\$\{([^}]+)\}/g, match => {
+    const inner = match.slice(2, -1);
+    const parts = inner.split(":");
+    if (parts[0] !== "param" || parts.length <= 2) {
+      return match;
+    }
+
+    const paramName = parts[1]?.trim();
+    if (!paramName) {
+      return "${param}";
+    }
+
+    return `\${param:${paramName}}`;
+  });
 }
 
 function validateDraft(
